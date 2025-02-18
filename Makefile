@@ -13,7 +13,8 @@ CROSS_TARGET_LIST = \
     armv7-unknown-linux-musleabihf \
     arm-unknown-linux-musleabi \
     arm-unknown-linux-musleabihf \
-    aarch64-unknown-linux-musl
+    aarch64-unknown-linux-musl \
+	riscv64gc-unknown-linux-gnu
 
 $(CROSS_TARGET_LIST):
 ifeq ($(TLS),TRUE)
