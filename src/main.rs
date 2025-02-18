@@ -1,35 +1,38 @@
+use getopts::{Matches, Options};
 use std::env;
 
-use getopts::{Matches, Options};
+use srun::{ReturnCode, SrunClient, User, get_ip_by_if_name, read_config_from_file, select_ip};
 
-use srun::{get_ip_by_if_name, read_config_from_file, select_ip, SrunClient, User};
-
-fn print_usage(opts: Option<&Options>) {
+fn print_usage(opts: Option<&Options>) -> ReturnCode {
     let brief = "Usage: srun ACTION [options]\n\nActions: login | logout".to_string();
     if let Some(opts) = opts {
         print!("{}", opts.usage(&brief));
     } else {
         println!("{}", brief);
     }
+    ReturnCode::Success
 }
 
-fn main() {
+fn main() -> ReturnCode {
     let args: Vec<String> = env::args().collect();
     if args.len() < 2 {
         print_usage(None);
-        return;
+        return ReturnCode::ArgsError;
     }
 
-    match args[1].as_str() {
+    let ret = match args[1].as_str() {
         "login" => login_match(&args),
         "logout" => logout_match(&args),
         _ => {
             print_usage(None);
+            ReturnCode::ArgsError
         }
-    }
+    };
+
+    ret
 }
 
-fn login_match(args: &[String]) {
+fn login_match(args: &[String]) -> ReturnCode {
     let options = {
         let mut opts = Options::new();
         opts.optflag("h", "help", "print help message");
@@ -58,20 +61,20 @@ fn login_match(args: &[String]) {
         Ok(m) => m,
         Err(e) => {
             println!("parse args error: {}", e);
-            return;
+            return ReturnCode::ArgsError;
         }
     };
 
     if matches.opt_present("h") {
-        print_usage(Some(&options));
+        print_usage(Some(&options))
     } else if matches.opt_present("c") {
-        config_login(matches);
+        config_login(matches)
     } else {
-        single_login(matches);
+        single_login(matches)
     }
 }
 
-fn logout_match(args: &[String]) {
+fn logout_match(args: &[String]) -> ReturnCode {
     let options = {
         let mut opts = Options::new();
         opts.optflag("h", "help", "print help message");
@@ -90,21 +93,22 @@ fn logout_match(args: &[String]) {
         Ok(m) => m,
         Err(e) => {
             println!("parse args error: {}", e);
-            return;
+            return ReturnCode::ArgsError;
         }
     };
 
     if matches.opt_present("h") {
-        print_usage(Some(&options));
+        print_usage(Some(&options))
     } else if matches.opt_present("c") {
-        config_logout(matches);
+        config_logout(matches)
     } else {
         logout(matches)
     }
 }
 
-fn config_login(matches: Matches) {
+fn config_login(matches: Matches) -> ReturnCode {
     let config_path = matches.opt_str("c").unwrap();
+    let mut ret_code = ReturnCode::Success;
     match read_config_from_file(config_path) {
         Ok(config) => {
             let config_i = config.clone();
@@ -151,16 +155,19 @@ fn config_login(matches: Matches) {
 
                 if let Err(e) = client.login() {
                     println!("login error: {}", e);
+                    ret_code = ReturnCode::LoginError;
                 }
             }
         }
         Err(e) => {
             println!("read config file error: {}", e);
+            ret_code = ReturnCode::ConfigError;
         }
     }
+    ret_code
 }
 
-fn single_login(matches: Matches) {
+fn single_login(matches: Matches) -> ReturnCode {
     let auth_server = match matches.opt_str("s") {
         Some(u) => u,
         None => format!("http://{}", env!("AUTH_SERVER_IP")),
@@ -169,14 +176,14 @@ fn single_login(matches: Matches) {
         Some(u) => u,
         None => {
             println!("need username");
-            return;
+            return ReturnCode::LoginError;
         }
     };
     let password = match matches.opt_str("p") {
         Some(u) => u,
         None => {
             println!("need password");
-            return;
+            return ReturnCode::LoginError;
         }
     };
     let detect_ip = matches.opt_present("d");
@@ -192,7 +199,7 @@ fn single_login(matches: Matches) {
                 println!("  1. use '-i IP' to specify ip");
                 println!("  2. use '-d' to auto detect ip");
                 println!("  3. use '--select-ip' to select ip");
-                return;
+                return ReturnCode::LoginError;
             }
         }
     };
@@ -242,11 +249,14 @@ fn single_login(matches: Matches) {
 
     if let Err(e) = client.login() {
         println!("login error: {}", e);
+        return ReturnCode::LoginError;
     }
+    ReturnCode::Success
 }
 
-fn config_logout(matches: Matches) {
+fn config_logout(matches: Matches) -> ReturnCode {
     let config_path = matches.opt_str("c").unwrap();
+    let mut ret_code = ReturnCode::Success;
     match read_config_from_file(config_path) {
         Ok(config) => {
             let config_i = config.clone();
@@ -272,16 +282,19 @@ fn config_logout(matches: Matches) {
 
                 if let Err(e) = client.logout() {
                     println!("logout error: {}", e);
+                    ret_code = ReturnCode::LogoutError;
                 }
             }
         }
         Err(e) => {
             println!("read config file error: {}", e);
+            ret_code = ReturnCode::ConfigError;
         }
     }
+    ret_code
 }
 
-fn logout(matches: Matches) {
+fn logout(matches: Matches) -> ReturnCode {
     let auth_server = match matches.opt_str("s") {
         Some(u) => u,
         None => format!("http://{}", env!("AUTH_SERVER_IP")),
@@ -290,7 +303,7 @@ fn logout(matches: Matches) {
         Some(u) => u,
         None => {
             println!("need username");
-            return;
+            return ReturnCode::LogoutError;
         }
     };
     let detect_ip = matches.opt_present("d");
@@ -306,7 +319,7 @@ fn logout(matches: Matches) {
                 println!("  1. use '-i IP' to specify ip");
                 println!("  2. use '-d' to auto detect ip");
                 println!("  3. use '--select-ip' to select ip");
-                return;
+                return ReturnCode::LogoutError;
             }
         }
     };
@@ -321,5 +334,7 @@ fn logout(matches: Matches) {
 
     if let Err(e) = client.logout() {
         println!("logout error: {}", e);
+        return ReturnCode::LogoutError;
     }
+    ReturnCode::Success
 }
